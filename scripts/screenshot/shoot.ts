@@ -32,12 +32,18 @@ try {
     await page.waitForTimeout(600)
     await page.screenshot({ path: out(`screenshot-${mode}.png`), fullPage: true })
     console.log(`wrote docs/screenshot-${mode}.png`)
-    await page.goto(`http://localhost:${port}/#/`)
-    await page.waitForSelector(".pv-card")
-    await page.waitForTimeout(400)
-    await page.screenshot({ path: out(`home-${mode}.png`), fullPage: true })
-    console.log(`wrote docs/home-${mode}.png`)
     await page.close()
+
+    // The session list, wider, down to where it ends.
+    const home = await browser.newPage({ viewport: { width: 980, height: 900 }, deviceScaleFactor: 2, reducedMotion: "reduce", colorScheme: mode })
+    home.on("pageerror", (error) => console.error(error))
+    await home.goto(`http://localhost:${port}/#/`)
+    await home.waitForSelector(".pv-card")
+    await home.waitForTimeout(400)
+    const box = (await home.locator(".pv-home").boundingBox())!
+    await home.screenshot({ path: out(`home-${mode}.png`), clip: { x: 0, y: 0, width: 980, height: Math.ceil(box.y + box.height + 28) } })
+    console.log(`wrote docs/home-${mode}.png`)
+    await home.close()
   }
 } finally {
   await browser.close()

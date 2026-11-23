@@ -109,15 +109,26 @@ export function writeDemo(dir: string, now = Date.UTC(2026, 10, 23, 10, 12)) {
   return path
 }
 
-type Other = { cwd: string; ago: number; prompts: string[]; model?: string; cost?: number; running?: boolean }
+type Other = {
+  cwd: string
+  ago: number
+  prompts: string[]
+  model?: string
+  cost?: number
+  /** Its last request's tool call is still going. */
+  running?: boolean
+  /** Its last prompt has no reply yet. */
+  waiting?: boolean
+}
 
 // The rest of the made-up session list, for the home page's screenshot. Times count back from the real now, since the
 // list goes by when each file last changed.
 const OTHERS: Other[] = [
   { cwd: "/Users/you/code/acme-app", ago: 0, prompts: ["Make the settings page keyboard-navigable"], running: true, cost: 0.04 },
+  { cwd: "/Users/you/code/blog", ago: 0, prompts: ["Draft a post about context windows", "Add a chart of context use per request"], waiting: true, cost: 0.18 },
   { cwd: "/Users/you/conductor/workspaces/acme-app/lisbon", ago: 3 * 3600_000, prompts: ["Upgrade Vite to 7 and fix the build", "Now the dev server", "Commit"], cost: 0.21 },
   { cwd: "/Users/you/conductor/workspaces/acme-app/osaka", ago: 5 * 3600_000, prompts: ["Why does the login form flash on load?", "Try the CSS fix"], model: "gpt-5.5", cost: 0.12 },
-  { cwd: "/Users/you/code/blog", ago: 26 * 3600_000, prompts: ["Draft a post about context windows", "Shorter intro"], cost: 0.09 },
+  { cwd: "/Users/you/code/blog", ago: 26 * 3600_000, prompts: ["Outline the context windows post", "Shorter intro"], cost: 0.09 },
   { cwd: "/Users/you/code/blog", ago: 3 * 86_400_000, prompts: ["Fix the RSS feed dates", "And the sitemap"], model: "qwen3-coder:30b" },
   { cwd: "/Users/you/code/infra", ago: 12 * 86_400_000, prompts: ["Why is the staging deploy failing?", "Roll it back"], cost: 0.33 },
   ...[1, 2, 3].map((i) => ({ cwd: "/Users/you/code/acme-app", ago: i * 3600_000, prompts: ["Generate a concise title for this coding-agent conversation."], model: "claude-haiku-4-5" })),
@@ -132,6 +143,7 @@ export function writeOthers(dir: string, now = Date.now()) {
     o.prompts.forEach((text, n) => {
       const at = start + n * 120_000
       s.user(at, text)
+      if (o.waiting && n === o.prompts.length - 1) return
       const tools = o.running && n === o.prompts.length - 1 ? [{ name: "bash", args: { command: "bun test" } }] : []
       s.request({
         start: at + 500,

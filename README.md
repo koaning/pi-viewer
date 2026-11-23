@@ -3,13 +3,8 @@
 A live dashboard of your [pi](https://github.com/earendil-works/pi) coding agent sessions, in the browser.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
-  <img alt="The session dashboard" src="docs/screenshot-light.png" width="560">
-</picture>
-
-<picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/home-dark.png">
-  <img alt="The session list" src="docs/home-light.png" width="560">
+  <img alt="The session list: running sessions as cards, the rest grouped by day" src="docs/home-light.png" width="760">
 </picture>
 
 - **Sessions**: every pi session on disk, by day or by project (Conductor worktrees fold into their repository). The ones running now come first as cards, each with its context use and cost, so you can keep an eye on several at once. Sessions of one prompt and one reply, such as title generators, are hidden until you ask for them.
@@ -18,6 +13,11 @@ A live dashboard of your [pi](https://github.com/earendil-works/pi) coding agent
 - **Every request**: what each request's context held, what it produced, and what it cost.
 - **Turns**: a trace waterfall per prompt, with its requests and tool calls.
 - **Tools**: calls, time and output per tool.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
+  <img alt="One session's dashboard: context, overview, every request, turns and tools" src="docs/screenshot-light.png" width="560">
+</picture>
 
 It's a port of [opencode-viewer](https://github.com/koaning/opencode-viewer) to pi. It needs no pi extension: it reads the session files pi writes under `~/.pi/agent/sessions` and follows them as they grow, so it also works for sessions you ran earlier.
 
