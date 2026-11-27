@@ -97,9 +97,13 @@ export class SessionIndex {
       .sort((a, b) => b.modified - a.modified)
   }
 
+  /** The session with this id; looks again on a miss, for a file so new that watching hasn't seen it yet. */
   get(id: string): SessionFile | undefined {
-    for (const file of this.files.values()) if (file.id === id) return file
-    return undefined
+    const find = () => [...this.files.values()].find((file) => file.id === id)
+    const found = find()
+    if (found) return found
+    this.scan()
+    return find()
   }
 
   onList(listener: (list: readonly SessionSummary[]) => void): () => void {

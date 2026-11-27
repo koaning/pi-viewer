@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process"
 import { existsSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { parseArgs } from "node:util"
+import { version } from "../package.json"
 import type { CatalogModel } from "./api"
+import { open } from "./open"
 import { loadCatalog } from "./server/catalog"
 import { createApp } from "./server/http"
 import { agentDir, sessionsDir } from "./server/paths"
@@ -25,6 +26,8 @@ Options:
       --dir <path>   pi's sessions directory (default $PI_CODING_AGENT_SESSION_DIR,
                      else $PI_CODING_AGENT_DIR/sessions, else ~/.pi/agent/sessions)
       --no-open      Don't open the browser
+      --shared       Run as the server pi's --viewer flag shares: on a fixed port, without
+                     opening the browser, until the last pi holding it is gone
   -h, --help         Show this
 `
 
@@ -35,6 +38,7 @@ const { values, positionals } = parseArgs({
     host: { type: "string" },
     dir: { type: "string" },
     "no-open": { type: "boolean" },
+    shared: { type: "boolean" },
     help: { type: "boolean", short: "h" },
   },
 })
@@ -63,7 +67,27 @@ const models = () => {
 }
 void models()
 
+const shared = values.shared === true
+
+// In shared mode the server lives as long as some pi holds it, plus a grace period for a pi that's reloading.
+let holders = 0
+let idle: ReturnType<typeof setTimeout> | undefined
+const quitIn = (ms: number) => {
+  if (idle) clearTimeout(idle)
+  idle = setTimeout(() => quit(), ms)
+}
+const onHold = (delta: 1 | -1) => {
+  holders += delta
+  if (holders === 0) quitIn(5_000)
+  else if (idle) {
+    clearTimeout(idle)
+    idle = undefined
+  }
+}
+
 const app = createApp({
+  version,
+  onHold: shared ? onHold : undefined,
   index,
   catalog: models,
   client,
@@ -78,18 +102,10 @@ const target = (arg: string | undefined) => {
   return (list.find((s) => s.id === arg) ?? list.find((s) => s.id.startsWith(arg)))?.id ?? arg
 }
 
-const open = (url: string) => {
-  const [cmd, args] =
-    process.platform === "darwin" ? ["open", [url]] : process.platform === "win32" ? ["cmd", ["/c", "start", "", url]] : ["xdg-open", [url]]
-  try {
-    spawn(cmd, args, { stdio: "ignore", detached: true }).on("error", () => undefined).unref()
-  } catch {
-    // No browser to open; the URL is printed.
-  }
-}
-
 const listen = (port: number, tries = 10) => {
   app.once("error", (error: NodeJS.ErrnoException) => {
+    // Another pi started the shared server first.
+    if (error.code === "EADDRINUSE" && shared) process.exit(0)
     if (error.code === "EADDRINUSE" && tries > 0 && !values.port) return listen(port + 1, tries - 1)
     process.stderr.write(`pi-viewer: ${error.message}\n`)
     process.exit(1)
@@ -100,13 +116,15 @@ const listen = (port: number, tries = 10) => {
     const url = `http://${shown}:${port}/${id ? `#/s/${encodeURIComponent(id)}` : ""}`
     process.stdout.write(`pi-viewer: ${index.list().length} sessions in ${dir}\n  ${url}\n`)
     if (!client) process.stdout.write("  (API only: the client isn't built; `bun run dev` serves it)\n")
-    if (!values["no-open"] && client) open(url)
+    if (!values["no-open"] && !shared && client) open(url)
+    // A pi that spawned this and died before holding it.
+    if (shared && holders === 0) quitIn(30_000)
   })
 }
 
 listen(values.port ? Number(values.port) : 4545)
 
-const quit = () => {
+function quit() {
   index.stop()
   app.close()
   process.exit(0)
