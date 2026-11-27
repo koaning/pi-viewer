@@ -15,13 +15,19 @@ url=${RELEASE_URL:-$(git remote get-url origin)}
 source=$(git rev-parse --short HEAD)
 version=$(node -p 'require("./package.json").version')
 
+# pi shows a package's changelog entries newer than the version it last saw, so each version needs its own.
+if ! grep -q "^## \[$version\]" CHANGELOG.md; then
+  echo "release: CHANGELOG.md has no \"## [$version]\" section; add what changed" >&2
+  exit 1
+fi
+
 bun run typecheck
 bun test
 bun run build
 
 out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
-cp -R package.json README.md dist "$out"/
+cp -R package.json README.md CHANGELOG.md dist "$out"/
 git -C "$out" init -q -b release
 git -C "$out" add -A
 git -C "$out" -c user.name="$(git config user.name)" -c user.email="$(git config user.email)" \

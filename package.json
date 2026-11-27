@@ -1,6 +1,6 @@
 {
   "name": "pi-viewer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A live dashboard of your pi coding agent sessions: context, tokens, cost, turns and tools, in the browser",
   "license": "MIT",
   "keywords": ["pi-package", "pi", "pi-coding-agent", "dashboard", "tokens", "context"],
@@ -8,7 +8,7 @@
   "bin": {
     "pi-viewer": "./dist/cli.js"
   },
-  "files": ["dist"],
+  "files": ["dist", "CHANGELOG.md"],
   "pi": {
     "extensions": ["./dist/extension.js"]
   },
