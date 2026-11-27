@@ -47,6 +47,8 @@ export type SessionEvent =
   | { readonly type: "append"; readonly entries: readonly PiEntry[] }
   | { readonly type: "summary"; readonly summary: SessionSummary }
   | { readonly type: "gone" }
+  /** No such session yet: pi writes a session's file after its first reply. The stream stays open until it appears. */
+  | { readonly type: "waiting" }
 
 /** How long since its last write a session counts as live. */
 export const LIVE_MS = 15 * 60_000

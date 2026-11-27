@@ -42,6 +42,10 @@ export interface Options {
    * own name at 127.0.0.1 (DNS rebinding) must not get them. Undefined allows any, for --host on a trusted network.
    */
   readonly hosts?: ReadonlySet<string>
+  /** Told when a holder (a pi that opened the viewer) connects (+1) or goes away (-1), so a shared server can quit. */
+  readonly onHold?: (delta: 1 | -1) => void
+  /** Sent by /api/hello, which tells a pi-viewer apart from anything else on the port. */
+  readonly version?: string
 }
 
 const hostname = (header: string | undefined) => {
@@ -78,6 +82,12 @@ export function createApp(options: Options): Server {
     const url = new URL(req.url ?? "/", "http://localhost")
     const path = url.pathname
     try {
+      if (path === "/api/hello") return json(res, { app: "pi-viewer", version: options.version ?? "" })
+      if (path === "/api/hold") {
+        options.onHold?.(1)
+        stream(req, res, () => options.onHold?.(-1))
+        return
+      }
       if (path === "/api/sessions") return json(res, index.list())
       if (path === "/api/sessions/stream") {
         const send = stream(req, res, () => off())
@@ -88,12 +98,22 @@ export function createApp(options: Options): Server {
       if (path === "/api/models") return json(res, await options.catalog())
       const match = /^\/api\/sessions\/([^/]+)(\/stream)?$/.exec(path)
       if (match) {
-        const file = index.get(decodeURIComponent(match[1]!))
-        if (!file) return json(res, { error: "no such session" }, 404)
-        if (!match[2]) return json(res, file.load())
+        const id = decodeURIComponent(match[1]!)
+        const file = index.get(id)
+        if (!match[2]) return file ? json(res, file.load()) : json(res, { error: "no such session" }, 404)
         let off = () => {}
         const send = stream(req, res, () => off())
-        off = file.subscribe(send)
+        if (file) off = file.subscribe(send)
+        else {
+          // Opened before pi wrote it (`/viewer` in a fresh session): wait for the file to show up in the list.
+          send({ type: "waiting" })
+          off = index.onList(() => {
+            const found = index.get(id)
+            if (!found) return
+            off()
+            off = found.subscribe(send)
+          })
+        }
         return
       }
       if (path.startsWith("/api/")) return json(res, { error: "not found" }, 404)

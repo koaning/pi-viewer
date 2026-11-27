@@ -7,7 +7,7 @@ A live dashboard of your [pi](https://github.com/earendil-works/pi) coding agent
   <img alt="The session list: running sessions as cards, the rest grouped by day" src="docs/home-light.png" width="760">
 </picture>
 
-- **Sessions**: every pi session on disk, by day or by project (Conductor worktrees fold into their repository). The ones running now come first as cards, each with its context use and cost, so you can keep an eye on several at once. Sessions of one prompt and one reply, such as title generators, are hidden until you ask for them.
+- **Sessions**: every pi session on disk, by day or by project (Conductor worktrees fold into their repository). The ones running now come first as cards, each with how full its context is, so you can keep an eye on several at once. Sessions of one prompt and one reply, such as title generators, are hidden until you ask for them.
 - **Context**: what fills the model's window: system prompt and tools, your messages, reasoning, tool results, and free space.
 - **Overview**: active time, tokens processed (and how much was cached), cost, and turns, requests and tool calls.
 - **Every request**: what each request's context held, what it produced, and what it cost.
@@ -41,7 +41,20 @@ Each session has its own URL (`#/s/<id>`), so you can follow several live sessio
     --dir <path>   pi's sessions directory (default $PI_CODING_AGENT_SESSION_DIR,
                    else $PI_CODING_AGENT_DIR/sessions, else ~/.pi/agent/sessions)
     --no-open      Don't open the browser
+    --shared       Run as the server `pi --viewer` shares (fixed port, no browser,
+                   quits when the last pi holding it is gone)
 ```
+
+## In pi: `pi --viewer`
+
+pi-viewer is also a pi package. Install it, then start pi with `--viewer` to open the session list, or type `/viewer` in a running session to open that session (in a new session, the page waits until pi writes it, after the first reply):
+
+```sh
+pi install npm:pi-viewer     # or, from a clone: bun run build && pi install ./
+pi --viewer
+```
+
+All your pis share one server on port 4545 (set `PI_VIEWER_PORT` to change it). The first pi that needs it starts it in the background, and later ones reuse it. It stops a few seconds after the last pi that opened it quits. pi can't run without starting a session, so to run only the dashboard, use `pi-viewer` (or `node dist/cli.js`) as above.
 
 Sessions on another machine: run pi-viewer there with `--no-open` and forward the port with `ssh -L 4545:localhost:4545 host`.
 
@@ -62,6 +75,7 @@ The server only answers to `localhost` (transcripts hold your code and maybe sec
 
 ```sh
 bun run dev         # API on :4546 and Vite with HMR on :5173
+make dev            # the same, installing dependencies first if needed, and opening the browser
 bun run typecheck
 bun test
 bun run build
@@ -72,5 +86,6 @@ The pieces:
 
 - `src/pi/`: pi's file format. `branch.ts` picks the active branch; `normalize.ts` folds tool results into their requests.
 - `src/model.ts`: turns, timings, the context estimate and tool stats, from opencode-viewer.
+- `src/extension.ts`: the pi extension behind `--viewer` and `/viewer`.
 - `src/server/`: follows the files (`tail.ts`, `sessions.ts`, `watch.ts`), reads the model catalog, and serves the API with server-sent events.
 - `src/client/`: the Solid app. `view/` is opencode-viewer's dashboard.

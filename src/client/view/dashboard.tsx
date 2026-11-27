@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Match, Show, Switch, type Accessor, type JSX } from "solid-js"
+import { createEffect, createMemo, createSignal, on, For, Match, Show, Switch, type Accessor, type JSX } from "solid-js"
 import * as f from "../../format"
 import { contextOf, totalOf, type ToolStat, type Turn } from "../../model"
 import type { Cost } from "../../pricing"
@@ -28,23 +28,32 @@ export function Dashboard(props: Props) {
     return paletteOf(dashboard().breakdown, keys)
   })
 
-  // The turns are an accordion: the latest is open unless you fold it, any other opens when you click it. A new turn
-  // takes over as the open one, and the one before it folds unless you opened it yourself.
-  const [toggled, setToggled] = createSignal<ReadonlyMap<string, boolean>>(new Map())
+  // The turns are an accordion: one open at a time. It follows the latest turn, so a new turn takes over as the open
+  // one, until you open an older one (which then stays open) or fold the open one (and then none is).
+  // `undefined` follows the latest, `null` is all folded, an id is the turn you opened.
+  const [pinned, setPinned] = createSignal<string | null | undefined>()
   const latest = () => root()?.turns[root()!.turns.length - 1]?.id
-  const isOpen = (id: string) => toggled().get(id) ?? id === latest()
-  const toggle = (id: string) => setToggled((map) => new Map(map).set(id, !isOpen(id)))
-  // One picked span (a request, tool call or marker), shared by the chart and every open trace.
-  const [span, setSpan] = createSignal<string>()
+  const isOpen = (id: string) => (pinned() === undefined ? latest() : pinned()) === id
+  const open = (id: string) => setPinned(id === latest() ? undefined : id)
+  // Another session starts over, following its latest turn.
+  createEffect(on(() => root()?.id, () => setPinned(undefined), { defer: true }))
   let rootEl: HTMLElement | undefined
+  const scrollToTurn = (id: string, block: ScrollLogicalPosition) =>
+    requestAnimationFrame(() => rootEl?.querySelector(`[data-turn="${id}"]`)?.scrollIntoView({ behavior: "smooth", block }))
+  const toggle = (id: string) => {
+    if (isOpen(id)) return setPinned(null)
+    open(id)
+    // Opening an older turn folds the (usually long) trace above it; keep the row you clicked in view.
+    scrollToTurn(id, "nearest")
+  }
+  // One picked span (a request, tool call or marker), shared by the chart and the open trace.
+  const [span, setSpan] = createSignal<string>()
   const pickStep = (stepId: string) => {
     const hit = dashboard().steps.get(stepId)
     if (!hit) return
-    setToggled((map) => new Map(map).set(hit.turn.id, true))
+    open(hit.turn.id)
     setSpan(stepId)
-    requestAnimationFrame(() =>
-      rootEl?.querySelector(`[data-turn="${hit.turn.id}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" }),
-    )
+    scrollToTurn(hit.turn.id, "start")
   }
 
   return (
@@ -73,6 +82,9 @@ export function Dashboard(props: Props) {
       <Show when={dashboard().gone}>
         <div class="ocv-empty">This session's file is gone.</div>
       </Show>
+      <Show when={dashboard().waiting}>
+        <div class="ocv-empty">Waiting for pi to write this session. It does once the model first replies.</div>
+      </Show>
       <Show when={dashboard().abandoned > 0}>
         <div class="ocv-muted ocv-small ocv-note">
           Showing the active branch; {dashboard().abandoned} other branch{dashboard().abandoned === 1 ? "" : "es"} in this session's tree{" "}
@@ -80,7 +92,7 @@ export function Dashboard(props: Props) {
         </div>
       </Show>
 
-      <Show when={root()} fallback={<Show when={!dashboard().loading && !dashboard().gone}><div class="ocv-empty">Nothing in this session yet.</div></Show>}>
+      <Show when={root()} fallback={<Show when={!dashboard().loading && !dashboard().gone && !dashboard().waiting}><div class="ocv-empty">Nothing in this session yet.</div></Show>}>
         {(view) => (
           <>
             <ContextPanel data={dashboard()} palette={palette()} tip={tip} />
@@ -282,7 +294,7 @@ const timeSegments = (t: Turn): Segment[] => {
 
 /**
  * The turns, newest first, as an accordion: each row is a turn's prompt, time split and numbers, and opens into its
- * trace. The latest is open; click any other to open it too.
+ * trace. One is open at a time: the latest, until you open another.
  */
 function TurnsSection(props: {
   readonly view: SessionView

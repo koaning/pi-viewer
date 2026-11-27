@@ -4,8 +4,10 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { SessionEvent } from "../src/api"
 import { costsOf } from "../src/server/catalog"
+import { createApp } from "../src/server/http"
 import { idOf, SessionFile, Tally } from "../src/server/sessions"
 import { LineReader, parseLine } from "../src/server/tail"
+import { SessionIndex } from "../src/server/watch"
 import { session } from "./fixtures"
 
 let dir: string
@@ -116,4 +118,58 @@ test("costsOf turns pi's prices and tiers into context tiers", () => {
     { input: 6, output: 15, cache: { read: 0.3, write: 3.75 }, tier: { type: "context", size: 200_000 } },
   ])
   expect(costsOf(undefined)).toBeUndefined()
+})
+
+describe("the shared server's routes", () => {
+  const serve = async (onHold?: (delta: 1 | -1) => void) => {
+    const app = createApp({ index: new SessionIndex(dir), catalog: async () => [], version: "9.9.9", onHold })
+    await new Promise<void>((done) => app.listen(0, "127.0.0.1", done))
+    const { port } = app.address() as { port: number }
+    return { app, base: `http://127.0.0.1:${port}` }
+  }
+
+  test("/api/hello names the app", async () => {
+    const { app, base } = await serve()
+    expect(await (await fetch(`${base}/api/hello`)).json()).toEqual({ app: "pi-viewer", version: "9.9.9" })
+    app.close()
+  })
+
+  test("a session's stream waits for a file pi hasn't written yet", async () => {
+    const index = new SessionIndex(dir).start()
+    const app = createApp({ index, catalog: async () => [] })
+    await new Promise<void>((done) => app.listen(0, "127.0.0.1", done))
+    const { port } = app.address() as { port: number }
+    const abort = new AbortController()
+    const res = await fetch(`http://127.0.0.1:${port}/api/sessions/new-one/stream`, { signal: abort.signal })
+    const reader = res.body!.getReader()
+    let text = ""
+    const until = async (type: string) => {
+      while (!text.includes(`"type":"${type}"`)) text += new TextDecoder().decode((await reader.read()).value)
+    }
+    await until("waiting")
+    mkdirSync(join(dir, "project"))
+    const s = session("/work/app")
+    s.user(1000, "hi")
+    writeFileSync(join(dir, "project", "2026-11-26T10-00-00-000Z_new-one.jsonl"), s.jsonl())
+    await until("snapshot")
+    abort.abort()
+    index.stop()
+    app.closeAllConnections()
+    app.close()
+  })
+
+  test("/api/hold counts a holder while it's connected", async () => {
+    const deltas: number[] = []
+    const { app, base } = await serve((delta) => deltas.push(delta))
+    const abort = new AbortController()
+    const res = await fetch(`${base}/api/hold`, { signal: abort.signal })
+    expect(res.headers.get("content-type")).toBe("text/event-stream")
+    expect(deltas).toEqual([1])
+    abort.abort()
+    await res.body?.cancel().catch(() => undefined)
+    for (let i = 0; i < 50 && deltas.length < 2; i++) await Bun.sleep(10)
+    expect(deltas).toEqual([1, -1])
+    app.closeAllConnections()
+    app.close()
+  })
 })

@@ -3,7 +3,7 @@ import type { SessionSummary } from "../api"
 import * as f from "../format"
 import { modelInfo } from "./catalog"
 import { helpOpen, MOD, plain, typing } from "./keys"
-import { ago, BUCKETS, bucketOf, isOneShot, projectOf, shortModel, tilde, titleOf } from "./list"
+import { ago, BUCKETS, bucketOf, isOneShot, projectOf, shortModel, stamp, tilde, titleOf } from "./list"
 
 // Every session pi has on disk. The ones running now as cards on top; under them the rest, by day or by project.
 // Sessions of one prompt and one reply (title generators, pings) stay out of the way until asked for.
@@ -148,7 +148,6 @@ export function Home() {
   const totals = createMemo(() => ({
     sessions: visible().length,
     projects: new Set(visible().map((s) => projectOf(s.cwd).key)).size,
-    cost: visible().reduce((sum, s) => sum + s.cost, 0),
   }))
 
   return (
@@ -159,7 +158,6 @@ export function Home() {
           <Show when={loaded() && totals().sessions}>
             <span class="pv-muted">
               {plural(totals().sessions, "session")} · {plural(totals().projects, "project")}
-              {totals().cost > 0 ? ` · ${f.usd(totals().cost)}` : ""}
             </span>
           </Show>
         </div>
@@ -292,7 +290,6 @@ function ProjectsView(props: { readonly sessions: readonly SessionSummary[]; rea
         <For each={projects()}>
           {(p) => {
             const open = () => props.open || expanded().has(p.key)
-            const cost = () => p.sessions.reduce((sum, s) => sum + s.cost, 0)
             return (
               <li class="pv-project" classList={{ "pv-open": open() }}>
                 <button class="pv-row pv-project-row" aria-expanded={open()} onClick={() => toggle(p.key)} title={tilde(p.key)}>
@@ -305,8 +302,7 @@ function ProjectsView(props: { readonly sessions: readonly SessionSummary[]; rea
                     </span>
                   </span>
                   <span />
-                  <span class="pv-num pv-muted">{cost() > 0 ? f.usd(cost()) : ""}</span>
-                  <span class="pv-num pv-muted">{ago(p.sessions[0]!.modified, props.now)}</span>
+                  <When time={p.sessions[0]!.modified} now={props.now} />
                 </button>
                 <Show when={open()}>
                   <ul class="pv-rows pv-nested">
@@ -356,14 +352,21 @@ function Card(props: { readonly session: SessionSummary }) {
             {f.tokens(s().context)} ctx{share() !== undefined ? ` · ${f.share(share()!, 1)}` : ""}
           </span>
         </Show>
-        <Show when={s().cost > 0}>
-          <span>{f.usd(s().cost)}</span>
-        </Show>
         <span class="pv-card-model" title={s().model?.id}>
           {shortModel(s().model?.id)}
         </span>
       </div>
     </a>
+  )
+}
+
+/** A row's last column: how long ago, and the time of day. */
+function When(props: { readonly time: number; readonly now: number }) {
+  return (
+    <span class="pv-num pv-muted pv-when" title={new Date(props.time).toLocaleString()}>
+      {ago(props.time, props.now)}
+      <span class="pv-when-time">{stamp(props.time, props.now)}</span>
+    </span>
   )
 }
 
@@ -385,10 +388,7 @@ function Row(props: { readonly session: SessionSummary; readonly now: number; re
         <span class="pv-row-model" title={s().model ? `${s().model!.provider}/${s().model!.id}` : undefined}>
           {shortModel(s().model?.id)}
         </span>
-        <span class="pv-num pv-muted">{s().cost > 0 ? f.usd(s().cost) : ""}</span>
-        <span class="pv-num pv-muted" title={new Date(s().modified).toLocaleString()}>
-          {ago(s().modified, props.now)}
-        </span>
+        <When time={s().modified} now={props.now} />
       </a>
     </li>
   )

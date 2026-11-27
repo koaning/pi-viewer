@@ -74,6 +74,12 @@ export const ago = (time: number, now = Date.now()) => {
   return date.toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" })
 }
 
+/** The time of day next to `ago`, `14:32`; empty for another year, where the date is long enough. */
+export const stamp = (time: number, now = Date.now()) =>
+  new Date(time).getFullYear() === new Date(now).getFullYear()
+    ? new Date(time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+    : ""
+
 export const BUCKETS = ["Today", "Yesterday", "This week", "Earlier"] as const
 export type Bucket = (typeof BUCKETS)[number]
 

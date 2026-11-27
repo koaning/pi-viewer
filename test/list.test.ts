@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { ago, bucketOf, isOneShot, projectOf, shortModel, tilde, titleOf } from "../src/client/list"
+import { ago, bucketOf, isOneShot, projectOf, shortModel, stamp, tilde, titleOf } from "../src/client/list"
 import { stripBlocks } from "../src/format"
 
 describe("projectOf", () => {
@@ -67,6 +67,11 @@ test("isOneShot", () => {
 describe("time", () => {
   const now = new Date(2026, 10, 23, 15, 0).getTime() // a Monday afternoon, local time
   const at = (d: number, h = 12) => new Date(2026, 10, 23 - d, h).getTime()
+  test("stamp is the time of day, except in another year", () => {
+    expect(stamp(at(2, 9), now)).toBe("09:00")
+    expect(stamp(new Date(2026, 5, 30, 14, 32).getTime(), now)).toBe("14:32")
+    expect(stamp(new Date(2025, 5, 30, 14, 32).getTime(), now)).toBe("")
+  })
   test("ago is short and the same style throughout", () => {
     expect(ago(now - 10_000, now)).toBe("just now")
     expect(ago(now - 18 * 60_000, now)).toBe("18m")

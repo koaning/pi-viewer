@@ -49,6 +49,8 @@ export interface Dashboard {
   readonly loading: boolean
   /** The file was deleted. */
   readonly gone: boolean
+  /** pi hasn't written the session yet. */
+  readonly waiting: boolean
 }
 
 /** The tab is showing; the clock stops while it isn't. */
@@ -65,6 +67,7 @@ export function createSessionStore(id: Accessor<string>) {
   const [summary, setSummary] = createSignal<SessionSummary>()
   const [loading, setLoading] = createSignal(true)
   const [gone, setGone] = createSignal(false)
+  const [waiting, setWaiting] = createSignal(false)
 
   createEffect(() => {
     const sessionId = id()
@@ -73,11 +76,17 @@ export function createSessionStore(id: Accessor<string>) {
     setSummary(undefined)
     setLoading(true)
     setGone(false)
+    setWaiting(false)
     const source = new EventSource(`/api/sessions/${encodeURIComponent(sessionId)}/stream`)
     source.onmessage = (message) => {
       const event = JSON.parse(message.data) as SessionEvent
       switch (event.type) {
+        case "waiting":
+          setWaiting(true)
+          setLoading(false)
+          break
         case "snapshot":
+          setWaiting(false)
           setHeader(event.header)
           setSummary(event.summary)
           setEntries(event.entries)
@@ -105,7 +114,7 @@ export function createSessionStore(id: Accessor<string>) {
     onCleanup(() => source.close())
   })
 
-  return { entries, header, summary, loading, gone }
+  return { entries, header, summary, loading, gone, waiting }
 }
 
 export type SessionStore = ReturnType<typeof createSessionStore>
@@ -160,6 +169,7 @@ export function createDashboard(store: SessionStore): Accessor<Dashboard> {
       abandoned: branch().abandoned,
       loading: store.loading(),
       gone: store.gone(),
+      waiting: store.waiting(),
     }
   })
 }

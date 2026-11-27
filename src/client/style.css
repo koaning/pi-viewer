@@ -644,18 +644,6 @@
   gap: 5px;
   min-width: 0;
 }
-.ocv-trace-toggle {
-  all: unset;
-  flex: none;
-  width: 12px;
-  text-align: center;
-  color: var(--ocv-muted);
-  cursor: pointer;
-  font-variant-numeric: tabular-nums;
-}
-.ocv-trace-toggle:hover {
-  color: var(--ocv-text);
-}
 .ocv-trace-label {
   flex: none;
   max-width: 60%;
@@ -820,6 +808,160 @@
   border-radius: 6px;
   font-family: var(--v2-font-family-code, ui-monospace, monospace);
   font-size: 11px;
+}
+
+/* A tool call's input, by argument. */
+.ocv-input-inline {
+  margin-top: 6px;
+  font-family: var(--v2-font-family-code, ui-monospace, monospace);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+/* The argument's name reads as a label, in the page's font; its value as code. */
+.ocv-input-key {
+  font-family: var(--v2-font-family-sans, system-ui, sans-serif);
+  color: var(--ocv-muted);
+  margin-right: 4px;
+}
+
+/* A bash call's command and output, dark the way terminals are, in either theme. */
+.ocv-preview .ocv-term {
+  background: #17181b;
+  color: #d8dadf;
+  max-height: 320px;
+}
+.ocv-preview .ocv-term-error {
+  color: #ff8f8f;
+}
+.ocv-sh-cmd {
+  color: #7cc4ff;
+  font-weight: 600;
+}
+.ocv-sh-flag {
+  color: #c9a7ff;
+}
+.ocv-sh-string {
+  color: #e6c07b;
+}
+.ocv-sh-var {
+  color: #ff9e64;
+}
+.ocv-sh-op {
+  color: #6fcf97;
+}
+.ocv-sh-comment {
+  color: #8b9099;
+  font-style: italic;
+}
+
+/* An edit: the text it replaced, then what it put there. */
+.ocv-preview .ocv-del,
+.ocv-preview .ocv-add {
+  border-left: 3px solid;
+  border-radius: 0 6px 6px 0;
+}
+.ocv-preview .ocv-del {
+  border-color: #e5534b;
+  background: color-mix(in srgb, #e5534b 8%, var(--ocv-layer));
+}
+.ocv-preview .ocv-add {
+  border-color: #3fb950;
+  background: color-mix(in srgb, #3fb950 8%, var(--ocv-layer));
+}
+
+/* Code, highlighted: One Light and One Dark. */
+.ocv-code .hljs-keyword,
+.ocv-code .hljs-selector-tag,
+.ocv-code .hljs-doctag {
+  color: #a626a4;
+}
+.ocv-code .hljs-string,
+.ocv-code .hljs-regexp,
+.ocv-code .hljs-addition,
+.ocv-code .hljs-attribute,
+.ocv-code .hljs-meta .hljs-string {
+  color: #50a14f;
+}
+.ocv-code .hljs-number,
+.ocv-code .hljs-literal,
+.ocv-code .hljs-attr,
+.ocv-code .hljs-variable,
+.ocv-code .hljs-template-variable,
+.ocv-code .hljs-selector-attr,
+.ocv-code .hljs-selector-pseudo {
+  color: #986801;
+}
+.ocv-code .hljs-title,
+.ocv-code .hljs-section,
+.ocv-code .hljs-selector-id,
+.ocv-code .hljs-meta {
+  color: #4078f2;
+}
+.ocv-code .hljs-built_in,
+.ocv-code .hljs-type,
+.ocv-code .hljs-class .hljs-title,
+.ocv-code .hljs-title.class_ {
+  color: #c18401;
+}
+.ocv-code .hljs-name,
+.ocv-code .hljs-tag,
+.ocv-code .hljs-deletion,
+.ocv-code .hljs-subst {
+  color: #e45649;
+}
+.ocv-code .hljs-comment,
+.ocv-code .hljs-quote {
+  color: #a0a1a7;
+  font-style: italic;
+}
+.ocv-code .hljs-emphasis {
+  font-style: italic;
+}
+.ocv-code .hljs-strong {
+  font-weight: 600;
+}
+[data-mode="dark"] .ocv-code .hljs-keyword,
+[data-mode="dark"] .ocv-code .hljs-selector-tag,
+[data-mode="dark"] .ocv-code .hljs-doctag {
+  color: #c678dd;
+}
+[data-mode="dark"] .ocv-code .hljs-string,
+[data-mode="dark"] .ocv-code .hljs-regexp,
+[data-mode="dark"] .ocv-code .hljs-addition,
+[data-mode="dark"] .ocv-code .hljs-attribute,
+[data-mode="dark"] .ocv-code .hljs-meta .hljs-string {
+  color: #98c379;
+}
+[data-mode="dark"] .ocv-code .hljs-number,
+[data-mode="dark"] .ocv-code .hljs-literal,
+[data-mode="dark"] .ocv-code .hljs-attr,
+[data-mode="dark"] .ocv-code .hljs-variable,
+[data-mode="dark"] .ocv-code .hljs-template-variable,
+[data-mode="dark"] .ocv-code .hljs-selector-attr,
+[data-mode="dark"] .ocv-code .hljs-selector-pseudo {
+  color: #d19a66;
+}
+[data-mode="dark"] .ocv-code .hljs-title,
+[data-mode="dark"] .ocv-code .hljs-section,
+[data-mode="dark"] .ocv-code .hljs-selector-id,
+[data-mode="dark"] .ocv-code .hljs-meta {
+  color: #61afef;
+}
+[data-mode="dark"] .ocv-code .hljs-built_in,
+[data-mode="dark"] .ocv-code .hljs-type,
+[data-mode="dark"] .ocv-code .hljs-class .hljs-title,
+[data-mode="dark"] .ocv-code .hljs-title.class_ {
+  color: #e6c07b;
+}
+[data-mode="dark"] .ocv-code .hljs-name,
+[data-mode="dark"] .ocv-code .hljs-tag,
+[data-mode="dark"] .ocv-code .hljs-deletion,
+[data-mode="dark"] .ocv-code .hljs-subst {
+  color: #e06c75;
+}
+[data-mode="dark"] .ocv-code .hljs-comment,
+[data-mode="dark"] .ocv-code .hljs-quote {
+  color: #7f848e;
 }
 
 @media (prefers-reduced-motion: reduce) {

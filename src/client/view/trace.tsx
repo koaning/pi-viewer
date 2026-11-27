@@ -1,13 +1,16 @@
-import { createMemo, createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
+import { createMemo, For, Match, Show, Switch, type JSX } from "solid-js"
 import * as f from "../../format"
 import { contextOf, type ContextPoint, type Marker, type Step, type ToolCall, type Turn } from "../../model"
 import type { Dashboard } from "../store"
-import { grouped, NEUTRAL, PRODUCED, TIME, type Palette } from "./buckets"
+import { grouped, PRODUCED, TIME, type Palette } from "./buckets"
+import { Code, languageOf } from "./code"
+import { inputFields, shellTokens } from "./input"
 import { Legend, StackBar, type Segment } from "./charts"
 import type { Tip } from "./tip"
 
-// A turn as a waterfall, after wigglystuff's TraceView: one row per span (its requests, and their tool calls indented
-// under them), with a bar on the turn's timeline and its duration.
+// A turn as a waterfall, after wigglystuff's TraceView: one row per span, in time order (each request, then the tool
+// calls it made), with a bar on the turn's timeline and its duration. Flat: most requests make one tool call or none, so
+// nesting calls under their request mostly adds rows to read past.
 // The turn itself is the timeline, so it gets no row of its own. Click a row for its details.
 
 type State = "running" | "ok" | "error"
@@ -21,7 +24,6 @@ interface Bar {
 
 interface Row {
   readonly id: string
-  readonly depth: number
   readonly kind: "request" | "tool" | "marker"
   readonly label: string
   readonly detail: string
@@ -29,7 +31,6 @@ interface Row {
   readonly end: number
   readonly state: State
   readonly bars: readonly Bar[]
-  readonly kids: number
   readonly step?: Step
   readonly tool?: ToolCall
   readonly marker?: Marker
@@ -37,76 +38,55 @@ interface Row {
 
 const stepEnd = (step: Step, now: number) => step.completed ?? (step.running ? now : step.created + step.ms)
 
-/** A request's bar: thinking where its reasoning ran, generating for the rest of the model's time, then its tools. */
+/** When a request's model time ends: its tools follow, on rows of their own. */
+const modelEndOf = (step: Step, now: number) => (step.pending ? stepEnd(step, now) : step.created + step.modelMs)
+
+/** A request's bar: thinking where its reasoning ran, generating for the rest of the model's time. */
 const requestBars = (step: Step, now: number): Bar[] => {
-  const end = stepEnd(step, now)
-  const modelEnd = step.created + step.modelMs
+  const modelEnd = modelEndOf(step, now)
   const bars: Bar[] = [
     { start: step.created, end: modelEnd, color: TIME.model.color, label: step.pending ? "Waiting on the model" : TIME.model.label },
   ]
   for (const [start, stop] of step.thinking)
     bars.push({ start: Math.max(step.created, start), end: Math.min(modelEnd, stop), color: TIME.thinking.color, label: TIME.thinking.label })
-  if (end > modelEnd) bars.push({ start: modelEnd, end, color: NEUTRAL, label: "Running its tools" })
   return bars
 }
 
 const stateOf = (running: boolean, error: boolean): State => (running ? "running" : error ? "error" : "ok")
 
-/** The rows of a turn, with folded requests' tools left out: its requests and markers in time order, each request's tools under it. */
-const rowsOf = (turn: Turn, now: number, open: (id: string, byDefault: boolean) => boolean): Row[] => {
-  const steps = (list: readonly Step[], depth: number, rows: Row[] = []): Row[] => {
-    for (const step of list) {
-      rows.push({
-        id: step.id,
-        depth,
-        kind: "request",
-        label: step.model.id.split("/").pop() || step.model.id,
-        detail: step.pending ? "waiting for the reply…" : `${f.tokens(step.context)} ctx · ${f.tokens(step.usage.output + step.usage.reasoning)} out`,
-        start: step.created,
-        end: stepEnd(step, now),
-        state: stateOf(step.running, !!step.error),
-        bars: requestBars(step, now),
-        kids: step.tools.length,
-        step,
-      })
-      if (!open(step.id, true)) continue
-      for (const tool of step.tools) {
-        const start = tool.ran ?? tool.created
-        const end = tool.completed ?? (tool.status === "running" && step.running ? now : start + tool.ms)
-        rows.push({
-          id: tool.id,
-          depth: depth + 1,
-          kind: "tool",
-          label: tool.name,
-          detail: tool.summary,
-          start,
-          end,
-          state: stateOf(tool.status === "running" && step.running, tool.status === "error"),
-          bars: [{ start, end, color: TIME.tools.color, label: TIME.tools.label }],
-          kids: 0,
-          tool,
-        })
+/** The rows of a turn: its requests and markers in time order, each request followed by its tool calls. */
+const rowsOf = (turn: Turn, now: number): Row[] => {
+  const groups: Row[][] = turn.steps.map((step) => [
+    {
+      id: step.id,
+      kind: "request",
+      label: step.model.id.split("/").pop() || step.model.id,
+      detail: step.pending ? "waiting for the reply…" : `${f.tokens(step.context)} ctx · ${f.tokens(step.usage.output + step.usage.reasoning)} out`,
+      start: step.created,
+      end: modelEndOf(step, now),
+      // Its own part is the model's; once the reply is in, its tools' rows say what's still running.
+      state: stateOf(step.running && !!step.pending, !!step.error),
+      bars: requestBars(step, now),
+      step,
+    },
+    ...step.tools.map((tool): Row => {
+      const start = tool.ran ?? tool.created
+      const end = tool.completed ?? (tool.status === "running" && step.running ? now : start + tool.ms)
+      return {
+        id: tool.id,
+        kind: "tool",
+        label: tool.name,
+        detail: tool.summary,
+        start,
+        end,
+        state: stateOf(tool.status === "running" && step.running, tool.status === "error"),
+        bars: [{ start, end, color: TIME.tools.color, label: TIME.tools.label }],
+        tool,
       }
-    }
-    return rows
-  }
-  const groups: Row[][] = turn.steps.map((step) => steps([step], 0))
+    }),
+  ])
   for (const marker of turn.markers)
-    groups.push([
-      {
-        id: marker.id,
-        depth: 0,
-        kind: "marker",
-        label: marker.label,
-        detail: "",
-        start: marker.time,
-        end: marker.time,
-        state: "ok",
-        bars: [],
-        kids: 0,
-        marker,
-      },
-    ])
+    groups.push([{ id: marker.id, kind: "marker", label: marker.label, detail: "", start: marker.time, end: marker.time, state: "ok", bars: [], marker }])
   return groups.sort((a, b) => a[0]!.start - b[0]!.start).flat()
 }
 
@@ -119,8 +99,6 @@ const ticks = (ms: number): number[] => {
   return out
 }
 
-const INDENT = 12
-
 export function TurnTrace(props: {
   readonly turn: Turn
   readonly dashboard: Dashboard
@@ -130,13 +108,7 @@ export function TurnTrace(props: {
   readonly selected?: string
   readonly onSelect: (id: string | undefined) => void
 }) {
-  // Folding, by row id; rows not listed keep their default (requests open).
-  const [folds, setFolds] = createSignal<ReadonlyMap<string, boolean>>(new Map())
-  const open = (id: string, byDefault: boolean) => folds().get(id) ?? byDefault
-  const toggle = (row: Row) =>
-    setFolds((map) => new Map(map).set(row.id, !open(row.id, row.kind !== "tool")))
-
-  const rows = createMemo(() => rowsOf(props.turn, props.now, open))
+  const rows = createMemo(() => rowsOf(props.turn, props.now))
   const t0 = () => props.turn.start
   const span = () => Math.max(1, props.turn.end - props.turn.start)
   const left = (time: number) => `${Math.max(0, Math.min(100, ((time - t0()) / span()) * 100))}%`
@@ -162,19 +134,7 @@ export function TurnTrace(props: {
               classList={{ "ocv-trace-selected": row.id === props.selected }}
               onClick={() => props.onSelect(row.id === props.selected ? undefined : row.id)}
             >
-              <div class="ocv-trace-name" style={{ "padding-left": `${row.depth * INDENT}px` }}>
-                <Show when={row.kids > 0} fallback={<span class="ocv-trace-toggle" />}>
-                  <button
-                    class="ocv-trace-toggle"
-                    title={open(row.id, row.kind !== "tool") ? "Fold" : `Show ${row.kids}`}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      toggle(row)
-                    }}
-                  >
-                    {open(row.id, row.kind !== "tool") ? "−" : "+"}
-                  </button>
-                </Show>
+              <div class="ocv-trace-name">
                 <span class={`ocv-pip ocv-pip-${row.state}`} />
                 <span class="ocv-trace-label" title={row.label}>
                   {row.label}
@@ -331,13 +291,116 @@ function StepDetails(props: { readonly step: Step; readonly dashboard: Dashboard
   )
 }
 
-const pretty = (value: unknown) => {
-  if (typeof value === "string") return value
-  try {
-    return JSON.stringify(value, null, 2)
-  } catch {
-    return String(value)
-  }
+/** How much of a long input to show; the result is already cut short by the server. */
+const MAX_INPUT = 4000
+
+/** A bash call's command, if this is one. */
+const commandOf = (tool: ToolCall) => {
+  const input = tool.input as { command?: unknown } | undefined
+  return tool.name === "bash" && typeof input?.command === "string" ? input.command : undefined
+}
+
+/** The file a call reads or writes, whose extension says what language its text is. */
+const pathOf = (tool: ToolCall) => {
+  const input = tool.input as { path?: unknown; file_path?: unknown } | undefined
+  const path = input?.path ?? input?.file_path
+  return typeof path === "string" ? path : undefined
+}
+
+/** Arguments that hold code: highlighted as the file's language, or as what they look like. */
+const CODE = new Set(["content", "oldText", "newText", "code"])
+
+/** An edit's replacements: what went, then what came, each as the file's language. */
+function Edits(props: { readonly edits: readonly unknown[]; readonly language?: string }) {
+  const pairs = () =>
+    props.edits.flatMap((e) => {
+      const edit = e as { oldText?: unknown; newText?: unknown }
+      return typeof edit?.oldText === "string" && typeof edit.newText === "string" ? [{ old: edit.oldText, new: edit.newText }] : []
+    })
+  return (
+    <For each={pairs()}>
+      {(pair, i) => (
+        <>
+          <h4>
+            edit {i() + 1}
+            {pairs().length > 1 ? ` of ${pairs().length}` : ""}
+          </h4>
+          <Code class="ocv-del" text={pair.old.slice(0, MAX_INPUT)} language={props.language} />
+          <Code class="ocv-add" text={pair.new.slice(0, MAX_INPUT)} language={props.language} />
+        </>
+      )}
+    </For>
+  )
+}
+
+/** A call's input: its arguments by name, text as written rather than JSON-escaped, a bash command a step a line. */
+function InputFields(props: { readonly tool: ToolCall; readonly language?: string }) {
+  const fields = createMemo(() => inputFields(props.tool.name, props.tool.input))
+  return (
+    <For each={fields()}>
+      {(field) => (
+        <Switch
+          fallback={
+            <>
+              <Show when={field.key}>
+                <h4>{field.key}</h4>
+              </Show>
+              <pre>{field.text.slice(0, MAX_INPUT)}</pre>
+            </>
+          }
+        >
+          <Match when={field.key === "command" && props.tool.name === "bash"}>
+            <pre class="ocv-term">
+              <For each={shellTokens(field.text.slice(0, MAX_INPUT))}>{(token) => <span class={`ocv-sh-${token.kind}`}>{token.text}</span>}</For>
+            </pre>
+          </Match>
+          <Match when={field.key === "edits" && Array.isArray(field.value) && (field.value as unknown[])}>
+            {(edits) => <Edits edits={edits()} language={props.language} />}
+          </Match>
+          <Match when={!field.block}>
+            <div class="ocv-input-inline">
+              <span class="ocv-input-key">{field.key}</span> {field.text}
+            </div>
+          </Match>
+          <Match when={CODE.has(field.key)}>
+            <h4>{field.key}</h4>
+            <Code text={field.text.slice(0, MAX_INPUT)} language={props.language} guess={field.key === "code" && !props.language} />
+          </Match>
+        </Switch>
+      )}
+    </For>
+  )
+}
+
+/** What went in and what came out. */
+function ToolIO(props: { readonly tool: ToolCall }) {
+  const t = () => props.tool
+  const bash = () => commandOf(t()) !== undefined
+  const language = () => languageOf(pathOf(t()))
+  const done = () => t().status === "completed" || t().status === "error"
+  return (
+    <>
+      <details class="ocv-preview" open>
+        <summary>Input</summary>
+        <InputFields tool={t()} language={language()} />
+      </details>
+      <details class="ocv-preview" open>
+        <summary>Output{t().outputChars > t().output.length ? ` (first ${t().output.length.toLocaleString()} of ${t().outputChars.toLocaleString()} chars)` : ""}</summary>
+        <Show when={t().output} fallback={<div class="ocv-muted ocv-small">{done() ? "No output." : "Running…"}</div>}>
+          <Show
+            when={!bash()}
+            fallback={
+              <pre class="ocv-term" classList={{ "ocv-term-error": t().status === "error" }}>
+                {t().output}
+              </pre>
+            }
+          >
+            <Code text={t().output} language={t().name === "read" ? language() : undefined} />
+          </Show>
+        </Show>
+      </details>
+    </>
+  )
 }
 
 function ToolDetails(props: { readonly tool: ToolCall }) {
@@ -364,16 +427,7 @@ function ToolDetails(props: { readonly tool: ToolCall }) {
           )}
         </Show>
       </dl>
-      <details class="ocv-preview" open>
-        <summary>Input</summary>
-        <pre>{pretty(t().input).slice(0, 4000)}</pre>
-      </details>
-      <Show when={t().output}>
-        <details class="ocv-preview">
-          <summary>Output{t().outputChars > t().output.length ? ` (first ${t().output.length.toLocaleString()} chars)` : ""}</summary>
-          <pre>{t().output}</pre>
-        </details>
-      </Show>
+      <ToolIO tool={t()} />
     </>
   )
 }

@@ -416,7 +416,7 @@ html[data-mode="dark"] .pv-page {
   box-sizing: border-box;
   width: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 140px) 56px 64px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 140px) 104px;
   gap: 14px;
   align-items: center;
   padding: 6px 8px;
@@ -450,6 +450,13 @@ html[data-mode="dark"] .pv-page {
 .pv-row .pv-num {
   font-size: 12px;
 }
+/* The time sits in its own slot, so times line up whatever the date before them. */
+.pv-when-time {
+  display: inline-block;
+  width: 5ch;
+  margin-left: 8px;
+  opacity: 0.7;
+}
 
 /* Projects, each a row that opens into its sessions. */
 .pv-project-row {
@@ -457,7 +464,7 @@ html[data-mode="dark"] .pv-page {
   box-sizing: border-box;
   width: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 140px) 56px 64px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 140px) 104px;
   gap: 14px;
   align-items: center;
   padding: 7px 8px;
@@ -497,7 +504,7 @@ html[data-mode="dark"] .pv-page {
 @media (max-width: 720px) {
   .pv-row,
   .pv-project-row {
-    grid-template-columns: minmax(0, 1fr) 56px 64px;
+    grid-template-columns: minmax(0, 1fr) 104px;
   }
   .pv-row > :nth-child(2),
   .pv-project-row > :nth-child(2) {
@@ -510,12 +517,11 @@ html[data-mode="dark"] .pv-page {
     grid-template-columns: minmax(0, 1fr) 64px;
   }
   .pv-row > :nth-child(2),
-  .pv-row > :nth-child(3),
-  .pv-project-row > :nth-child(2),
-  .pv-project-row > :nth-child(3) {
+  .pv-project-row > :nth-child(2) {
     display: none;
   }
-  .pv-chip-sub {
+  .pv-chip-sub,
+  .pv-when-time {
     display: none;
   }
 }
