@@ -27,6 +27,20 @@ git -C "$out" add -A
 git -C "$out" -c user.name="$(git config user.name)" -c user.email="$(git config user.email)" \
   commit -q -m "pi-viewer $version, built from $source"
 git -C "$out" push -q --force "$url" release
-
 echo "release: pi-viewer $version ($source) is on the release branch"
+
+# A tag and a GitHub release per version: the tag keeps the build around once the branch moves on, so it can be pinned
+# with `@v<version>`. A version that was released before keeps its tag; bump package.json for a new one.
+tag="v$version"
+if git ls-remote --exit-code --tags "$url" "refs/tags/$tag" >/dev/null; then
+  echo "release: $tag already exists, so it stays as it was; bump the version in package.json to tag this one" >&2
+else
+  git -C "$out" tag "$tag"
+  git -C "$out" push -q "$url" "$tag"
+  # Only for the real repository, not a RELEASE_URL test.
+  if [ -z "${RELEASE_URL:-}" ]; then
+    gh release create "$tag" --verify-tag --title "pi-viewer $version" \
+      --notes "Built from $source. Install with \`pi install git:github.com/koaning/pi-viewer@release\`, or pin this version with \`@$tag\`."
+  fi
+fi
 echo "  pi install git:github.com/koaning/pi-viewer@release"
